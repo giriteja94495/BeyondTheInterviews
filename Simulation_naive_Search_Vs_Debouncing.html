@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search Optimization: Naive vs. Debounced</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+        }
+
+        .cursor {
+            display: inline-block;
+            width: 2px;
+            height: 1.2em;
+            background-color: #3b82f6;
+            margin-left: 2px;
+            animation: blink 1s infinite;
+            vertical-align: middle;
+        }
+
+        @keyframes blink {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0;
+            }
+        }
+
+        .request-ping {
+            animation: ping-bg 0.4s cubic-bezier(0, 0, 0.2, 1);
+        }
+
+        @keyframes ping-bg {
+            0% {
+                background-color: rgba(59, 130, 246, 0.5);
+                transform: scale(1);
+            }
+
+            100% {
+                background-color: transparent;
+                transform: scale(1.05);
+            }
+        }
+
+        .card {
+            transition: all 0.3s ease;
+        }
+    </style>
+</head>
+
+<body class="p-4 md:p-8">
+    <div class="max-w-5xl mx-auto">
+        <header class="mb-10 text-center">
+            <h1 class="text-3xl font-bold text-slate-800">Search Strategy Comparison</h1>
+            <p class="text-slate-500 mt-2">Visualizing infrastructure impact: Naive Request vs. Debounced Autocomplete
+            </p>
+            <button id="startBtn"
+                class="mt-6 bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-full font-semibold shadow-lg transition-all active:scale-95">
+                Run Simulation
+            </button>
+        </header>
+
+        <div class="grid md:grid-cols-2 gap-8">
+            <!-- Naive Search Panel -->
+            <div class="card bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200">
+                <div class="bg-red-50 p-4 border-b border-red-100 flex justify-between items-center">
+                    <h2 class="font-bold text-red-700 uppercase tracking-wider text-sm">Naive Search</h2>
+                    <span class="text-xs bg-red-200 text-red-800 px-2 py-1 rounded">Every Keystroke</span>
+                </div>
+                <div class="p-6">
+                    <div class="mb-6">
+                        <label class="block text-xs font-semibold text-slate-400 mb-2">INPUT FIELD</label>
+                        <div class="w-full bg-slate-50 border-2 border-slate-200 rounded-lg p-4 h-16 flex items-center text-xl text-slate-700"
+                            id="inputNaive">
+                            <span class="text-content"></span><span class="cursor"></span>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-between p-4 bg-slate-900 rounded-xl text-white">
+                        <div>
+                            <p class="text-slate-400 text-xs uppercase font-bold">Server Requests</p>
+                            <p class="text-4xl font-mono font-bold text-red-400" id="countNaive">0</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-slate-400 text-xs uppercase font-bold">Infrastructure Load</p>
+                            <p class="text-xl font-bold" id="loadNaive">0%</p>
+                        </div>
+                    </div>
+
+                    <div class="mt-6 space-y-2" id="logNaive">
+                        <p class="text-xs text-slate-400 italic">Request logs will appear here...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Debounced/Autocomplete Panel -->
+            <div class="card bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200">
+                <div class="bg-emerald-50 p-4 border-b border-emerald-100 flex justify-between items-center">
+                    <h2 class="font-bold text-emerald-700 uppercase tracking-wider text-sm">Debounced (Autocomplete)
+                    </h2>
+                    <span class="text-xs bg-emerald-200 text-emerald-800 px-2 py-1 rounded">Wait for Inactivity</span>
+                </div>
+                <div class="p-6">
+                    <div class="mb-6">
+                        <label class="block text-xs font-semibold text-slate-400 mb-2">INPUT FIELD</label>
+                        <div class="w-full bg-slate-50 border-2 border-slate-200 rounded-lg p-4 h-16 flex items-center text-xl text-slate-700"
+                            id="inputSmart">
+                            <span class="text-content"></span><span class="cursor"></span>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-between p-4 bg-slate-900 rounded-xl text-white">
+                        <div>
+                            <p class="text-slate-400 text-xs uppercase font-bold">Server Requests</p>
+                            <p class="text-4xl font-mono font-bold text-emerald-400" id="countSmart">0</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-slate-400 text-xs uppercase font-bold">Infrastructure Load</p>
+                            <p class="text-xl font-bold" id="loadSmart">0%</p>
+                        </div>
+                    </div>
+
+                    <div class="mt-6 space-y-2" id="logSmart">
+                        <p class="text-xs text-slate-400 italic">Request logs will appear here...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            const phrase = "How is the weather";
+            const startBtn = document.getElementById('startBtn');
+
+            const naiveText = document.querySelector('#inputNaive .text-content');
+            const smartText = document.querySelector('#inputSmart .text-content');
+
+            const countNaiveEl = document.getElementById('countNaive');
+            const countSmartEl = document.getElementById('countSmart');
+
+            const loadNaiveEl = document.getElementById('loadNaive');
+            const loadSmartEl = document.getElementById('loadSmart');
+
+            const logNaiveEl = document.getElementById('logNaive');
+            const logSmartEl = document.getElementById('logSmart');
+
+            let naiveCount = 0;
+            let smartCount = 0;
+            let debounceTimer;
+
+            function addLog(container, text, colorClass) {
+                const entry = document.createElement('div');
+                entry.className = `text-[10px] font-mono p-1 rounded ${colorClass} animate-pulse`;
+                entry.innerText = `GET /search?q=${encodeURIComponent(text)}`;
+                container.prepend(entry);
+                if (container.children.length > 5) container.lastElementChild.remove();
+            }
+
+            function reset() {
+                naiveText.innerText = "";
+                smartText.innerText = "";
+                naiveCount = 0;
+                smartCount = 0;
+                countNaiveEl.innerText = "0";
+                countSmartEl.innerText = "0";
+                loadNaiveEl.innerText = "0%";
+                loadSmartEl.innerText = "0%";
+                logNaiveEl.innerHTML = "";
+                logSmartEl.innerHTML = "";
+            }
+
+            async function runSimulation() {
+                reset();
+                startBtn.disabled = true;
+                startBtn.innerText = "Typing...";
+                startBtn.classList.add('opacity-50');
+
+                for (let i = 0; i <= phrase.length; i++) {
+                    const currentSub = phrase.substring(0, i);
+
+                    // Update Naive
+                    naiveText.innerText = currentSub;
+                    if (i > 0) {
+                        naiveCount++;
+                        countNaiveEl.innerText = naiveCount;
+                        loadNaiveEl.innerText = "100%";
+                        loadNaiveEl.classList.add('text-red-500');
+                        addLog(logNaiveEl, currentSub, 'bg-red-100 text-red-700');
+                    }
+
+                    // Update Smart (Visual Typing Only)
+                    smartText.innerText = currentSub;
+
+                    // Simulate Debounce logic
+                    clearTimeout(debounceTimer);
+                    debounceTimer = setTimeout(() => {
+                        if (currentSub.length > 0) {
+                            smartCount++;
+                            countSmartEl.innerText = smartCount;
+                            loadSmartEl.innerText = Math.round((smartCount / naiveCount) * 100) + "%";
+                            addLog(logSmartEl, currentSub, 'bg-emerald-100 text-emerald-700');
+                        }
+                    }, 500);
+
+                    // Natural typing delay
+                    await new Promise(r => setTimeout(r, 100 + Math.random() * 150));
+                }
+
+                // End state
+                setTimeout(() => {
+                    startBtn.disabled = false;
+                    startBtn.innerText = "Run Simulation";
+                    startBtn.classList.remove('opacity-50');
+                    loadNaiveEl.innerText = "High Redundancy";
+                    loadSmartEl.innerText = "Optimal Load";
+                }, 1000);
+            }
+
+            startBtn.addEventListener('click', runSimulation);
+        </script>
+</body>
+
+</html>
